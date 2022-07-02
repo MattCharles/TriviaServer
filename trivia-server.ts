@@ -12,6 +12,23 @@ let possibleQuestions: string[][] = [];
 
 // TODO: make this a map of number -> Set<number>
 let questionsAskedThisGame: Set<number> = new Set();
+let playerAnswers: Map<number, PlayerAnswer> = new Map(); // map from the question number to an object containing all answers provided
+let currentRound: number = 0;
+
+interface PlayerAnswer {
+  [playerID: string]: number;
+}
+interface InGameStatusResponse {
+  currentQuestionID: number;
+  roundNumber: number;
+  // map from a playerID to the response that they have given. If we don't have a response from a player, their answer will be -1.
+  [playerID: string]: number;
+}
+
+interface AnswerMessage {
+  roundNumber: number;
+  answerIndex: number;
+}
 
 // router.use("/", async (ctx, next) => {
 //   await next().then(function () {
@@ -44,14 +61,18 @@ router
       playerID: 1,
     };
   })
-  // TODO: return who has answered what
-  .post("/games/:gameID/:questionID/:userID", (ctx, next) => {
+  .post("/games/:gameID/:roundID", (ctx, next) => {
     console.log("Successful post!");
     console.log(ctx.request.body);
+    const answerMessage = ctx.request.body as AnswerMessage;
+    const playerAnswer: PlayerAnswer = {};
+    playerAnswer[answerMessage.roundNumber] = answerMessage.answerIndex;
+    playerAnswers.set(currentRound, playerAnswer);
     ctx.body = "Got it!";
     ctx.status = 200;
     next();
   })
+  // TODO: return who has answered what
   .get("/games/:gameID/status", (ctx, next) => {})
   .post("/joinGame/:gameID", (ctx, next) => {});
 
