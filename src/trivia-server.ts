@@ -5,8 +5,35 @@ app.use(bodyParser());
 import Router from "koa-router";
 import * as csv from "csv-string";
 import * as fs from "fs";
+import { Timer } from "./timer";
 
 const router = new Router();
+
+interface ScoredAnswer {
+  answer: number;
+  score: number;
+}
+
+interface PenciledReponse {
+  currentAnswer: number;
+  currentScore: number;
+}
+
+interface QuestionState {
+  questionID: number;
+  playerAnswers: Map<number, number>;
+}
+
+interface GameState {
+  hostID: string;
+  gameID: string;
+  currentQuestionID: number;
+  questionHistory: Map<number, QuestionState>;
+  timer: Timer;
+}
+
+const currentGames: Map<string, GameState> = new Map();
+const secondsPerQuestion = 90;
 
 let possibleQuestions: string[][] = [];
 
@@ -21,8 +48,14 @@ interface PlayerAnswer {
 interface InGameStatusResponse {
   currentQuestionID: number;
   roundNumber: number;
+  questionHistory: {
+    [roundNumber: number]: QuestionState;
+  };
   // map from a playerID to the response that they have given. If we don't have a response from a player, their answer will be -1.
-  [playerID: string]: number;
+  playerStatuses: {
+    [playerID: string]: PenciledReponse;
+  };
+  secondsLeftInRound: number;
 }
 
 interface AnswerMessage {
@@ -30,16 +63,51 @@ interface AnswerMessage {
   answerIndex: number;
 }
 
-// router.use("/", async (ctx, next) => {
-//   await next().then(function () {
-//     console.log("Middleware done");
-//   });
-// });
+interface CreateMessage {
+  name: string;
+}
 
-// Get current question possible answers
+interface QuestionRow {
+  question: string;
+  answers: {
+    1: string;
+    2: string;
+    3: string;
+    4: string;
+  };
+  category: string;
+  explanation: string;
+}
+
+// TODO: Allow user to choose category once there are enough questions in each category
+const getRandomQuestion = (alreadyAsked: Set<number>) => {
+  let randomIndex;
+  do {
+    randomIndex = Math.max(
+      1,
+      Math.floor(Math.random() * possibleQuestions.length)
+    );
+    console.log(`trying question ${randomIndex}`);
+  } while (alreadyAsked.has(randomIndex));
+
+  const question = possibleQuestions[randomIndex];
+  // const responses: string[] = question.slice(1, 5).sort();
+  const result: QuestionRow = {
+    question: question[0],
+    answers: {
+      1: question[1],
+      2: question[2],
+      3: question[3],
+      4: question[4],
+    },
+    category: question[5],
+    explanation: question[6],
+  };
+  return result;
+};
+
 router
   .get("/", async function (ctx, next) {
-    // ctx.router available
     let randomIndex;
     do {
       randomIndex = Math.max(
@@ -56,15 +124,23 @@ router
     await next();
   })
   .post("/createLobby", function (ctx, next) {
-    ctx.body = {
-      gameID: 1,
-      playerID: 1,
+    const createMessage = ctx.request.body as CreateMessage;
+    const hostName = createMessage.name;
+    const response: InGameStatusResponse = {
+      currentQuestionID: 0,
+      roundNumber: 0,
+      playerStatuses: {},
+      secondsLeftInRound: secondsPerQuestion,
+      questionHistory: {},
     };
+    ctx.body = response;
   })
+  .post("/games/:gameID/start", (ctx, next) => {})
   .post("/games/:gameID/:roundID", (ctx, next) => {
     console.log("Successful post!");
     console.log(ctx.request.body);
     const answerMessage = ctx.request.body as AnswerMessage;
+    // TODO: right now people can modify past answers. Instead, just don't let them write if there's a round number mismatch
     const playerAnswer: PlayerAnswer = {};
     playerAnswer[answerMessage.roundNumber] = answerMessage.answerIndex;
     playerAnswers.set(currentRound, playerAnswer);
@@ -74,7 +150,7 @@ router
   })
   // TODO: return who has answered what
   .get("/games/:gameID/status", (ctx, next) => {})
-  .post("/joinGame/:gameID", (ctx, next) => {});
+  .post("/games/:gameID/join", (ctx, next) => {});
 
 app
   .use(router.routes())
